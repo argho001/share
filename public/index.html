@@ -1,0 +1,51 @@
+<!-- viewer.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Screen Viewer</title>
+</head>
+<body>
+    <h1>Viewing Shared Screen</h1>
+    <video id="remoteVideo" autoplay playsinline controls></video>
+
+    <!-- Import Socket.IO -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const remoteVideo = document.getElementById('remoteVideo');
+        let peerConnection;
+        const socket = io('http://localhost:3010');
+
+        // When receiving an offer from the sharer
+        socket.on('offer', async (offer) => {
+            peerConnection = new RTCPeerConnection();
+            peerConnection.ontrack = (event) => {
+                remoteVideo.srcObject = event.streams[0];
+            };
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('ice-candidate', event.candidate);
+                }
+            };
+
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            socket.emit('answer', answer);
+        });
+
+        // Handle ICE candidates from the sharer
+        socket.on('ice-candidate', async (candidate) => {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        });
+
+        // Handle end of screen sharing
+        socket.on('end-share', () => {
+            remoteVideo.srcObject = null;
+            alert('Screen sharing has ended.');
+        });
+    </script>
+</body>
+</html>

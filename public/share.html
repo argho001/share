@@ -1,0 +1,76 @@
+<!-- sharer.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Screen Sharer</title>
+</head>
+<body>
+    <h1>Share Your Screen</h1>
+    <button id="startScreenShare">Start Screen Share</button>
+    <button id="stopScreenShare" disabled>Stop Screen Share</button>
+
+    <!-- Import Socket.IO -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const startButton = document.getElementById('startScreenShare');
+        const stopButton = document.getElementById('stopScreenShare');
+        let localStream;
+        let peerConnection;
+        const socket = io('http://localhost:3010');
+
+        // Function to start screen sharing
+        const startScreenShare = async () => {
+            try {
+                localStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                stopButton.disabled = false;
+                startButton.disabled = true;
+
+                // Create WebRTC peer connection
+                peerConnection = new RTCPeerConnection();
+                peerConnection.addStream(localStream);
+
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        socket.emit('ice-candidate', event.candidate);
+                    }
+                };
+
+                // Create an offer and send it via socket to the viewer
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                socket.emit('offer', offer);
+            } catch (error) {
+                console.error('Error sharing screen:', error);
+            }
+        };
+
+        // Function to stop screen sharing
+        const stopScreenShare = () => {
+            localStream.getTracks().forEach(track => track.stop());
+            socket.emit('end-share');
+            startButton.disabled = false;
+            stopButton.disabled = true;
+        };
+
+        startButton.addEventListener('click', startScreenShare);
+        stopButton.addEventListener('click', stopScreenShare);
+
+        // Handle WebRTC answer from the viewer
+        socket.on('answer', async (answer) => {
+            await peerConnection.setRemoteDescription(answer);
+        });
+
+        // Handle ICE candidates
+        socket.on('ice-candidate', async (candidate) => {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        });
+
+        // Handle screen sharing end
+        socket.on('end-share', () => {
+            stopScreenShare();
+        });
+    </script>
+</body>
+</html>
